@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文件加密解密工具 - 客户端版本</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>文件加密解密工具</h1>
+        
+        <div class="instructions">
+            <h3>使用说明：</h3>
+            <ol>
+                <li><strong>生成密钥</strong>：在"生成密钥"选项卡中生成加密/解密所需的安全密钥文件（向后兼容）</li>
+                <li><strong>加密文件</strong>：在"加密文件"选项卡中选择加密方式（密码或密钥文件）对文件进行加密</li>
+                <li><strong>解密文件</strong>：在"解密文件"选项卡中选择解密方式（密码或密钥文件）对.pv文件进行解密</li>
+                <li>所有数据处理均在您的浏览器中进行，不会上传到任何服务器</li>
+                <li>请记住您设置的密码或妥善保管密钥文件，丢失将无法解密文件</li>
+            </ol>
+        </div>
+        
+        <div class="tab-container">
+            <div class="tab active" onclick="switchTab('generate')">生成密钥</div>
+            <div class="tab" onclick="switchTab('encrypt')">加密文件</div>
+            <div class="tab" onclick="switchTab('decrypt')">解密文件</div>
+        </div>
+        
+        <div id="generate" class="tab-content active">
+            <h2>生成加密密钥</h2>
+            <p>点击下方按钮生成安全的加密密钥文件。密钥文件用于加密和解密文件，请妥善保管（向后兼容功能）。</p>
+            <button onclick="generateKey()">生成密钥</button>
+            <div id="generate-status" class="status"></div>
+        </div>
+        
+        <div id="encrypt" class="tab-content">
+            <h2>加密文件</h2>
+            <p>选择要加密的文件和加密方式（密码或密钥文件），系统将生成加密后的.pv文件。所有处理均在您的设备上进行，文件不会上传到任何服务器。</p>
+            
+            <div class="form-group">
+                <label for="encrypt-mode">选择加密方式:</label>
+                <select id="encrypt-mode" onchange="toggleEncryptMode()">
+                    <option value="password">使用密码加密</option>
+                    <option value="keyfile">使用密钥文件加密</option>
+                </select>
+            </div>
+            
+            <form id="encrypt-form" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label for="file-to-encrypt">选择文件:</label>
+                    <input type="file" id="file-to-encrypt" name="file_to_encrypt" required>
+                </div>
+                
+                <!-- 密码加密模式 -->
+                <div id="password-encrypt-section">
+                    <div class="form-group">
+                        <label for="encrypt-password">设置密码:</label>
+                        <input type="password" id="encrypt-password" name="password" placeholder="请输入加密密码">
+                    </div>
+                    <div class="form-group">
+                        <label for="encrypt-password-confirm">确认密码:</label>
+                        <input type="password" id="encrypt-password-confirm" name="password_confirm" placeholder="请再次输入密码">
+                    </div>
+                </div>
+                
+                <!-- 密钥文件加密模式 -->
+                <div id="keyfile-encrypt-section" style="display: none;">
+                    <div class="form-group">
+                        <label for="encrypt-key-file">选择密钥文件:</label>
+                        <input type="file" id="encrypt-key-file" name="key_file" accept=".key" placeholder="请选择密钥文件">
+                    </div>
+                </div>
+                
+                <button type="submit">加密文件</button>
+            </form>
+            <div id="encrypt-status" class="status"></div>
+        </div>
+        
+        <div id="decrypt" class="tab-content">
+            <h2>解密文件</h2>
+            <p>选择要解密的.pv文件和对应的解密方式（密码或密钥文件），系统将恢复原始文件。所有处理均在您的设备上进行，文件不会上传到任何服务器。</p>
+            
+            <div class="form-group">
+                <label for="decrypt-mode">选择解密方式:</label>
+                <select id="decrypt-mode" onchange="toggleDecryptMode()">
+                    <option value="password">使用密码解密</option>
+                    <option value="keyfile">使用密钥文件解密</option>
+                </select>
+            </div>
+            
+            <form id="decrypt-form" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label for="encrypted-file">选择加密文件(.pv):</label>
+                    <input type="file" id="encrypted-file" name="encrypted_file" accept=".pv" required>
+                </div>
+                
+                <!-- 密码解密模式 -->
+                <div id="password-decrypt-section">
+                    <div class="form-group">
+                        <label for="decrypt-password">输入密码:</label>
+                        <input type="password" id="decrypt-password" name="password" placeholder="请输入解密密码">
+                    </div>
+                </div>
+                
+                <!-- 密钥文件解密模式 -->
+                <div id="keyfile-decrypt-section" style="display: none;">
+                    <div class="form-group">
+                        <label for="decrypt-key-file">选择密钥文件:</label>
+                        <input type="file" id="decrypt-key-file" name="key_file" accept=".key" placeholder="请选择密钥文件">
+                    </div>
+                </div>
+                
+                <button type="submit">解密文件</button>
+            </form>
+            <div id="decrypt-status" class="status"></div>
+        </div>
+    </div>
+
+    <script src="crypto.js"></script>
+    <script>
+        // 全局变量用于进度更新
+        let currentProgress = 0;
+        
+        // 初始化加密库
+        const videoCrypto = new VideoCrypto();
+        
+        // 切换标签页
+        function switchTab(tabName) {
+            // 隐藏所有标签内容
+            const tabContents = document.getElementsByClassName('tab-content');
+            for (let i = 0; i < tabContents.length; i++) {
+                tabContents[i].classList.remove('active');
+            }
+            
+            // 移除所有标签的活动状态
+            const tabs = document.getElementsByClassName('tab');
+            for (let i = 0; i < tabs.length; i++) {
+                tabs[i].classList.remove('active');
+            }
+            
+            // 显示选中的标签内容并激活标签
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+        }
+        
+        // 切换加密模式显示
+        function toggleEncryptMode() {
+            const mode = document.getElementById('encrypt-mode').value;
+            const passwordSection = document.getElementById('password-encrypt-section');
+            const keyfileSection = document.getElementById('keyfile-encrypt-section');
+            
+            if (mode === 'password') {
+                passwordSection.style.display = 'block';
+                keyfileSection.style.display = 'none';
+            } else if (mode === 'keyfile') {
+                passwordSection.style.display = 'none';
+                keyfileSection.style.display = 'block';
+            }
+        }
+        
+        // 切换解密模式显示
+        function toggleDecryptMode() {
+            const mode = document.getElementById('decrypt-mode').value;
+            const passwordSection = document.getElementById('password-decrypt-section');
+            const keyfileSection = document.getElementById('keyfile-decrypt-section');
+            
+            if (mode === 'password') {
+                passwordSection.style.display = 'block';
+                keyfileSection.style.display = 'none';
+            } else if (mode === 'keyfile') {
+                passwordSection.style.display = 'none';
+                keyfileSection.style.display = 'block';
+            }
+        }
+        
+        // 更新进度条
+        function updateProgress(percent) {
+            currentProgress = percent;
+            const statusDivId = window.currentOperation === 'encrypt' ? 'encrypt-status' : 'decrypt-status';
+            const statusDiv = document.getElementById(statusDivId);
+            if (statusDiv) {
+                statusDiv.textContent = `正在${window.currentOperation === 'encrypt' ? '加密' : '解密'}文件... ${percent}% (${formatFileSize(getCurrentFileSize())})`;
+                // 添加进度条元素
+                if (!statusDiv.querySelector('.progress-bar')) {
+                    statusDiv.innerHTML += '<div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>';
+                }
+                document.getElementById('progress-fill').style.width = percent + '%';
+                statusDiv.className = 'status progress';
+            }
+        }
+        
+        // 获取当前操作文件大小
+        function getCurrentFileSize() {
+            if (window.currentOperation === 'encrypt') {
+                return document.getElementById('file-to-encrypt').files[0]?.size || 0;
+            } else if (window.currentOperation === 'decrypt') {
+                return document.getElementById('encrypted-file').files[0]?.size || 0;
+            }
+            return 0;
+        }
+        
+        // 生成密钥
+        async function generateKey() {
+            const statusDiv = document.getElementById('generate-status');
+            statusDiv.className = 'status';
+            statusDiv.textContent = '';
+            
+            try {
+                // 显示处理中状态
+                statusDiv.textContent = '正在生成密钥...';
+                statusDiv.className = 'status';
+                statusDiv.style.display = 'block';
+                
+                // 生成密钥
+                const keyBuffer = await videoCrypto.generateKey();
+                
+                // 将密钥转换为blob并下载
+                const keyBlob = new Blob([keyBuffer], { type: 'application/octet-stream' });
+                const url = window.URL.createObjectURL(keyBlob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = 'encryption_key.key';
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                
+                statusDiv.textContent = '密钥生成成功！请妥善保管下载的密钥文件（向后兼容功能）。';
+                statusDiv.className = 'status success';
+            } catch (error) {
+                statusDiv.textContent = '错误: ' + error.message;
+                statusDiv.className = 'status error';
+            }
+        }
+        
+        // 加密表单提交
+        document.getElementById('encrypt-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const statusDiv = document.getElementById('encrypt-status');
+            statusDiv.className = 'status';
+            statusDiv.textContent = '';
+            
+            const fileToEncrypt = document.getElementById('file-to-encrypt').files[0];
+            const mode = document.getElementById('encrypt-mode').value;
+            
+            if (!fileToEncrypt) {
+                statusDiv.textContent = '错误: 请选择文件';
+                statusDiv.className = 'status error';
+                return;
+            }
+            
+            // 设置当前操作和进度
+            window.currentOperation = 'encrypt';
+            
+            try {
+                // 显示处理中状态
+                statusDiv.textContent = `正在加密文件... (${formatFileSize(fileToEncrypt.size)}) 这可能需要一些时间，请耐心等待。`;
+                statusDiv.className = 'status progress';
+                statusDiv.style.display = 'block';
+                
+                // 添加进度条
+                statusDiv.innerHTML += '<div class="progress-bar"><div class="progress-fill" id="encrypt-progress-fill"></div></div>';
+                
+                let encryptedData;
+                
+                if (mode === 'password') {
+                    // 密码模式
+                    const password = document.getElementById('encrypt-password').value;
+                    const passwordConfirm = document.getElementById('encrypt-password-confirm').value;
+                    
+                    if (!password) {
+                        statusDiv.textContent = '错误: 请输入密码';
+                        statusDiv.className = 'status error';
+                        return;
+                    }
+                    
+                    if (password !== passwordConfirm) {
+                        statusDiv.textContent = '错误: 两次输入的密码不一致';
+                        statusDiv.className = 'status error';
+                        return;
+                    }
+                    
+                    // 使用密码加密文件
+                    encryptedData = await videoCrypto.encryptFileWithPassword(fileToEncrypt, password);
+                } else if (mode === 'keyfile') {
+                    // 密钥文件模式
+                    const keyFile = document.getElementById('encrypt-key-file').files[0];
+                    
+                    if (!keyFile) {
+                        statusDiv.textContent = '错误: 请选择密钥文件';
+                        statusDiv.className = 'status error';
+                        return;
+                    }
+                    
+                    // 读取密钥文件
+                    const keyBuffer = await readFileAsArrayBuffer(keyFile);
+                    
+                    // 使用密钥文件加密文件
+                    encryptedData = await videoCrypto.encryptFile(fileToEncrypt, keyBuffer);
+                }
+                
+                // 创建加密文件并下载
+                const encryptedBlob = new Blob([encryptedData], { type: 'application/octet-stream' });
+                const url = window.URL.createObjectURL(encryptedBlob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = fileToEncrypt.name + '.pv';
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                
+                statusDiv.textContent = '文件加密成功！';
+                statusDiv.className = 'status success';
+            } catch (error) {
+                statusDiv.textContent = '加密失败: ' + error.message;
+                statusDiv.className = 'status error';
+            } finally {
+                // 重置操作状态
+                window.currentOperation = null;
+            }
+        });
+        
+        // 解密表单提交
+        document.getElementById('decrypt-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const statusDiv = document.getElementById('decrypt-status');
+            statusDiv.className = 'status';
+            statusDiv.textContent = '';
+            
+            const encryptedFile = document.getElementById('encrypted-file').files[0];
+            const mode = document.getElementById('decrypt-mode').value;
+            
+            if (!encryptedFile) {
+                statusDiv.textContent = '错误: 请选择加密文件';
+                statusDiv.className = 'status error';
+                return;
+            }
+            
+            if (!encryptedFile.name.toLowerCase().endsWith('.pv')) {
+                statusDiv.textContent = '错误: 输入文件必须是.pv后缀的加密文件';
+                statusDiv.className = 'status error';
+                return;
+            }
+            
+            // 设置当前操作和进度
+            window.currentOperation = 'decrypt';
+            
+            try {
+                // 显示处理中状态
+                statusDiv.textContent = `正在解密文件... (${formatFileSize(encryptedFile.size)}) 这可能需要一些时间，请耐心等待。`;
+                statusDiv.className = 'status progress';
+                statusDiv.style.display = 'block';
+                
+                // 添加进度条
+                statusDiv.innerHTML += '<div class="progress-bar"><div class="progress-fill" id="decrypt-progress-fill"></div></div>';
+                
+                let decryptedData;
+                
+                if (mode === 'password') {
+                    // 密码模式
+                    const password = document.getElementById('decrypt-password').value;
+                    
+                    if (!password) {
+                        statusDiv.textContent = '错误: 请输入密码';
+                        statusDiv.className = 'status error';
+                        return;
+                    }
+                    
+                    // 使用密码解密文件
+                    decryptedData = await videoCrypto.decryptFileWithPassword(encryptedFile, password);
+                } else if (mode === 'keyfile') {
+                    // 密钥文件模式
+                    const keyFile = document.getElementById('decrypt-key-file').files[0];
+                    
+                    if (!keyFile) {
+                        statusDiv.textContent = '错误: 请选择密钥文件';
+                        statusDiv.className = 'status error';
+                        return;
+                    }
+                    
+                    // 读取密钥文件
+                    const keyBuffer = await readFileAsArrayBuffer(keyFile);
+                    
+                    // 使用密钥文件解密文件
+                    decryptedData = await videoCrypto.decryptFile(encryptedFile, keyBuffer);
+                }
+                
+                // 创建解密文件并下载
+                const decryptedBlob = new Blob([decryptedData], { type: 'application/octet-stream' });
+                const url = window.URL.createObjectURL(decryptedBlob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = encryptedFile.name.replace('.pv', '');
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                
+                statusDiv.textContent = '文件解密成功！';
+                statusDiv.className = 'status success';
+            } catch (error) {
+                statusDiv.textContent = '解密失败: ' + error.message;
+                statusDiv.className = 'status error';
+            } finally {
+                // 重置操作状态
+                window.currentOperation = null;
+            }
+        });
+        
+        // 辅助函数：读取文件为ArrayBuffer
+        function readFileAsArrayBuffer(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = () => reject(reader.error);
+                reader.readAsArrayBuffer(file);
+            });
+        }
+        
+        // 格式化文件大小
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+        
+        // 使updateProgress函数全局可用
+        window.updateProgress = updateProgress;
+    </script>
+</body>
+</html>
